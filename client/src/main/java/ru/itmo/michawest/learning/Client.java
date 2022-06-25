@@ -1,5 +1,7 @@
 package ru.itmo.michawest.learning;
 
+import ru.itmo.michawest.learning.Input.ConsoleInput;
+
 import java.io.IOException;
 import java.nio.channels.DatagramChannel;
 
@@ -15,7 +17,8 @@ public class Client {
             System.out.println("Вы ничего не вели. Подключение произойдет к порту по умолчанию: "+serverPort);
         }
         try {
-            ClientManager client = new ClientManager(serverPort);
+            ConsoleInput input = new ConsoleInput();
+            ClientManager client = new ClientManager(serverPort, input);
             client.execute();
         }catch(IOException e){
             System.out.println("Возникла ошибка при подключении");

@@ -12,7 +12,8 @@ import ru.itmo.michawest.learning.exception.*;
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.nio.channels.DatagramChannel;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Scanner;
 import java.util.Stack;
 
@@ -29,11 +30,11 @@ public class ClientManager {
     private String currentCommand;
     private final String[] commands = {"help", "info", "show", "add", "remove_by_id", "update_by_id", "clear", "save", "execute_script", "exit", "remove_first", "reorder", "history", "group_counting_by_nationality", "count_by_hair_color", "login", "registration"};
 
-    public ClientManager(int sp) throws IOException {
+    public ClientManager(int sp, InputAll inp) throws IOException {
         serverPort = sp;
         isRunning = true;
         console = new Scanner(System.in);
-        input = new InputAll(console);
+        input = inp;
         this.channel = new DatagramSocket();
     }
 
@@ -46,21 +47,28 @@ public class ClientManager {
             System.out.println("Для входа в существующий введите login, для регистрации введите registration");
             try {
                 command = console.nextLine().toLowerCase().trim();
-                register = login(command);
+                login(command);
+                Command com = getAnswer();
+                if(com.getNameOfCommand().equals("login")||com.getNameOfCommand().equals("registration")) register = true;
             }catch(SendCommandException | GetCommandException e){
-                //e.printStackTrace();
                 System.out.println(e.getMessage());
             } catch(ClassNotFoundException e){
                 System.out.println("Пришел кривой ответ от сервера");
             } catch(NullPointerException e){
-                e.printStackTrace();
                 System.out.println("Вы вели пустую строку. Введите еще");
-            } catch (AbsenceAnswerException e){
-                System.out.println("Не удалось зарегистрироваться. Сервер не отправляет ответ. Попробуйте позже.");
+            } catch(InvalidCommandArgumentException e){
+                System.out.println(e.getMessage());
+            } catch(AbsenceAnswerException e){
+                System.out.println("Не удалось зарегистрироваться. Сервер не отправляет ответ. Попробуйте позже.\n" +
+                        "Возможно сервер находится на другом порте");
                 isRunning = false;
                 register = true;
             } catch(IOException e){
-                System.out.println("Возникла ошибка. Попробуйте еще раз.");
+                System.out.println("Возникла ошибка. Попробуйте еще раз. Чтобы выйти введите exit");
+            } catch (NoSuchAlgorithmException e) {
+                System.out.println("Ошибка при кодирование пароля. Пишите разработчику. Он дурак. michelle_3");
+                isRunning = false;
+                register = true;
             }
         }
 
@@ -68,6 +76,7 @@ public class ClientManager {
             try {
                 System.out.println(userName + ", введите команду. Чтобы получит список команд введите \"help\".\nЧтобы сменить аккаунт введите или \"login\", или \"registration\"");
                 command = console.nextLine().toLowerCase().trim();
+                System.out.println(command);
                 runCommand(new CommandWrapper(command));
             }catch(SendCommandException | GetCommandException e){
                 //e.printStackTrace();
@@ -79,60 +88,59 @@ public class ClientManager {
         channel.close();
     }
 
-    public boolean login(String cmd) throws IOException, ClassNotFoundException {
+    //Отправляет серверу запрос на регистрацию или вход
+    public void login(String cmd) throws IOException, ClassNotFoundException, NoSuchAlgorithmException {
         String password;
         String log;
-        Command result;
+        System.out.println(cmd);
         switch(cmd){
             case("registration"):
-
                 System.out.println("Введите логин");
                 System.out.print("login:");
                 log = console.nextLine().toLowerCase().trim();
+                if(log==null||log.isEmpty()) throw new InvalidCommandArgumentException("Вы вели пустую строку");
+                if(log.length()>40) throw new InvalidCommandArgumentException("Слишком длинный логин");
 
                 System.out.println("Введите пароль");
                 System.out.print("password:");
                 password = console.nextLine().toLowerCase().trim();
+                if(password==null||password.isEmpty()) throw new InvalidCommandArgumentException("Вы вели пустую строку");
 
                 Login registration = new Login("registration");
-                registration.setInfo(log, password);
+                registration.setLogin(log);
+                registration.setPassword(getCode(password));
                 this.userName = log;
 
                 //отмечаем, что это регистрация
-                registration.registration();
                 registration.setCollection(personCollection);
                 sendCommand(registration);
-
-                result = getCommand();
-                result.getResult();
-                return true;
+                break;
             case("login"):
-
                 System.out.println("Введите логин");
                 System.out.print("login:");
                 log = console.nextLine().toLowerCase().trim();
+                if(log==null||log.isEmpty()) throw new InvalidCommandArgumentException("Вы вели пустую строку");
+                if(log.length()>40) throw new InvalidCommandArgumentException("Слишком длинный логин");
 
                 System.out.println("Введите пароль");
                 System.out.print("password:");
                 password = console.nextLine().toLowerCase().trim();
+                if(password==null||password.isEmpty()) throw new InvalidCommandArgumentException("Вы вели пустую строку");
 
                 Login login = new Login();
-                login.setInfo(log, password);
+                login.setLogin(log);
+                login.setPassword(getCode(password));
                 this.userName = log;
 
                 login.setCollection(personCollection);
                 sendCommand(login);
-
-                result = getCommand();
-                result.getResult();
-                return true;
+                break;
             case("exit"):
                 System.out.println("Программа прекращает работу");
                 isRunning = false;
-                return true;
+                break;
             default:
-                System.out.println("Ввод был неправильный. Для входа в существующий введите login, для регистрации введите registration");
-                return false;
+                throw new InvalidCommandArgumentException("Ввод был неправильный. Для входа в существующий введите login, для регистрации введите registration");
         }
     }
 
@@ -151,20 +159,13 @@ public class ClientManager {
         }
     }
 
-    public Command getCommand() throws IOException, ClassNotFoundException {
+    public Command getAnswer() throws IOException, ClassNotFoundException {
         try {
-            /*ByteBuffer buf = ByteBuffer.allocate(1024 * 1024);
-            channel.socket().setSoTimeout(5000);
-            channel.socket().receive(new DatagramPacket(buf.array(), buf.array().length));
-            ByteArrayInputStream readbuf = new ByteArrayInputStream(buf.array());
-            ObjectInputStream readOb = new ObjectInputStream(readbuf);
-            Command result = (Command) readOb.readObject();*/
 
             byte[] buf = new byte[1024 * 1024];
             DatagramPacket recePacket = new DatagramPacket(buf, buf.length);
-            //channel.setSoTimeout(6000);
+            channel.setSoTimeout(8000);
             channel.receive(recePacket);
-            System.out.println("Типо принял");
             ByteArrayInputStream readbuf = new ByteArrayInputStream(buf);
             ObjectInputStream readOb = new ObjectInputStream(readbuf);
             Command result = (Command) readOb.readObject();
@@ -182,12 +183,15 @@ public class ClientManager {
 
     private void runCommand(CommandWrapper command) throws IOException {
         try {
-            if (!hasCommand(command.getCom())) {
-                throw new NoSuchCommandException();
-            }
-            processingCommand(command);
-            if (currentCommand.equals("exit")) {
-                getCommand();
+            if(!command.getCom().equals("exit")) {
+                if (!hasCommand(command.getCom())) {
+                    throw new NoSuchCommandException();
+                }
+                System.out.println("Start");
+                processingCommand(command);
+                getAnswer();
+            }else{
+                isRunning = false;
             }
         }catch (ParameterException e) {
             System.out.println(e.getMessage());
@@ -197,30 +201,36 @@ public class ClientManager {
             System.out.println(e.getMessage());
         }catch(IOException e){
             System.out.println(e.getMessage());
+        } catch (NoSuchAlgorithmException e) {
+            System.out.println("Ошибка при кодирование пароля. Пишите разработчику. Он дурак. michelle_3");
+            isRunning = false;
         }
     }
 
-    public void processingCommand(CommandWrapper command) throws IOException, ClassNotFoundException, ParameterException {
+    public void processingCommand(CommandWrapper command) throws IOException, ClassNotFoundException, ParameterException, NoSuchAlgorithmException {
         String arg = command.getArg();
         switch(command.getCom()){
-            case("login"):
-                login("login");
-                break;
             case("registration"):
                 login("registration");
                 break;
+            case("login"):
+                login("login");
+                break;
             case ("help"):
                 Help help = new Help();
+                help.setLogin(userName);
                 help.setCollection(personCollection);
                 sendCommand(help);
                 break;
             case("info"):
                 Info info = new Info();
+                info.setLogin(userName);
                 info.setCollection(personCollection);
                 sendCommand(info);
                 break;
             case("show"):
                 Show show = new Show();
+                show.setLogin(userName);
                 show.setCollection(personCollection);
                 sendCommand(show);
                 break;
@@ -228,6 +238,7 @@ public class ClientManager {
                 Add add = new Add();
                 Person p = input.readPerson();
                 add.setPerson(p);
+                add.setLogin(userName);
                 add.setCollection(personCollection);
                 sendCommand(add);
                 break;
@@ -244,6 +255,7 @@ public class ClientManager {
                 }
                 updateById.setNewId(nid);
                 updateById.setCollection(personCollection);
+                updateById.setLogin(userName);
                 sendCommand(updateById);
                 break;
             case("remove_by_id"):
@@ -259,16 +271,19 @@ public class ClientManager {
                 }
                 removeById.setRemoveID(id);
                 removeById.setCollection(personCollection);
+                removeById.setLogin(userName);
                 sendCommand(removeById);
                 break;
             case("clear"):
                 Clear clear = new Clear();
                 clear.setCollection(personCollection);
+                clear.setLogin(userName);
                 sendCommand(clear);
                 break;
             case("save"):
                 Save save = new Save();
                 save.setCollection(personCollection);
+                save.setLogin(userName);
                 sendCommand(save);
                 break;
             case("execute_script"):
@@ -279,39 +294,45 @@ public class ClientManager {
                     }
                     if (runFiles.contains(arg)) throw new RecursiveException();
                     runFiles.push(arg);
-                    ClientManager process = new ClientManager(serverPort);
+                    ClientManager process = new ClientManager(serverPort, new FileInput(arg));
                     process.fileMode(arg);
                     runFiles.pop();
                 } catch (RecursiveException e) {
                     System.out.println(e.getMessage());
                 }
                 executeScript.setCollection(personCollection);
+                executeScript.setLogin(userName);
                 sendCommand(executeScript);
                 break;
             case("exit"):
                 Exit exit = new Exit();
                 exit.setCollection(personCollection);
+                exit.setLogin(userName);
                 sendCommand(exit);
                 isRunning = false;
                 break;
             case("remove_first"):
                 RemoveFirst removeFirst = new RemoveFirst();
                 removeFirst.setCollection(personCollection);
+                removeFirst.setLogin(userName);
                 sendCommand(removeFirst);
                 break;
             case("reorder"):
                 Reorder reord = new Reorder();
                 reord.setCollection(personCollection);
+                reord.setLogin(userName);
                 sendCommand(reord);
                 break;
             case("history"):
                 History history = new History();
                 history.setCollection(personCollection);
+                history.setLogin(userName);
                 sendCommand(history);
                 break;
             case("min_by_weight"):
                 MinByWeight minByWeight = new MinByWeight();
                 minByWeight.setCollection(personCollection);
+                minByWeight.setLogin(userName);
                 sendCommand(minByWeight);
                 break;
             case("group_counting_by_nationality"):
@@ -319,6 +340,7 @@ public class ClientManager {
                 Country nation = input.readNationality();
                 groupCountingByNationality.setNationality(nation);
                 groupCountingByNationality.setCollection(personCollection);
+                groupCountingByNationality.setLogin(userName);
                 sendCommand(groupCountingByNationality);
                 break;
             case("count_by_hair_color"):
@@ -326,6 +348,7 @@ public class ClientManager {
                 Color color = input.readHairColor();
                 countByHairColor.setColor(color);
                 countByHairColor.setCollection(personCollection);
+                countByHairColor.setLogin(userName);
                 sendCommand(countByHairColor);
                 break;
         }
@@ -360,6 +383,17 @@ public class ClientManager {
             CommandWrapper cmd = input.readCommand();
             runCommand(cmd);
         }
+    }
+
+    private String getCode(String psw) throws UnsupportedEncodingException, NoSuchAlgorithmException {
+
+        MessageDigest md = MessageDigest.getInstance("SHA-1");
+        byte[] bytes = md.digest(psw.getBytes());
+        StringBuilder builder = new StringBuilder();
+        for(byte b: bytes){
+            builder.append(String.format("%02X ",b));
+        }
+        return builder.toString();
     }
 
 }

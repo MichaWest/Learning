@@ -25,4 +25,5 @@ public class Location implements Serializable {
     public double getZ(){
         return  this.z;
     }
+
 }

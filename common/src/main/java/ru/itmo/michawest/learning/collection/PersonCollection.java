@@ -122,7 +122,11 @@ public class PersonCollection implements Serializable {
 
     public void add(Person np){
         PersonComparator comparator = new PersonComparator(order);
-        collection.add(collection.indexOf(collection.stream().filter(p -> comparator.compare(p, np)<0).findFirst().get()), np);
+        try {
+            collection.add(collection.indexOf(collection.stream().filter(p -> comparator.compare(p, np) < 0).findFirst().get()), np);
+        }catch(NoSuchElementException e){
+            collection.add(np);
+        }
     }
 
     private static class XML{

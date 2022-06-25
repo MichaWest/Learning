@@ -1,7 +1,7 @@
 package ru.itmo.michawest.learning.commands;
 
 public class Mistake extends Command{
-    protected String nameOfCommand = "mistake";
+    protected String nameOfCommand = "exception";
     private String message = "На сервере возникла ошибка";
 
     public Mistake() {

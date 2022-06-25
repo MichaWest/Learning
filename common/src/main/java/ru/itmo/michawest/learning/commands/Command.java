@@ -9,7 +9,7 @@ public abstract class Command implements Serializable {
     protected PersonCollection collection;
     protected ArrayList<String> history;
     protected String nameOfCommand;
-    protected InfoToLogin userInfo;
+    protected String user;
 
     public Command(String name) {
         nameOfCommand = name;
@@ -30,22 +30,12 @@ public abstract class Command implements Serializable {
         return nameOfCommand;
     }
 
-    public String getPassword(){
-        return userInfo.password;
-    }
-
     public String getLogin(){
-        return userInfo.login;
+        return user;
     }
 
-    public class InfoToLogin implements Serializable {
-        String login;
-        String password;
-
-        InfoToLogin(String login, String password){
-            this.login = login;
-            this.password = password;
-        }
+    public void setLogin(String login){
+        this.user = login;
     }
 
 

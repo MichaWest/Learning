@@ -93,7 +93,7 @@ public class InputAll {
         }
     }
 
-    public java.time.LocalTime readCreateTime() throws InvalidDateFormatException, InvalidDateFormatException {
+    public java.time.LocalTime readCreateTime() throws InvalidDateFormatException {
         String s = scannerNextLine();
         if (s.equals("")) {
             return null;

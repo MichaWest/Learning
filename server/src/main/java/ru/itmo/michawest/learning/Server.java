@@ -13,8 +13,7 @@ public class Server {
     public static void main(String[] args) {
         try {
             int port = Integer.parseInt(args[0]);
-            PersonCollection personCollection = new PersonCollection();
-            ServerManager manager = new ServerManager(personCollection, port);
+            ServerManager manager = new ServerManager(port);
             manager.work();
         }catch(ArrayIndexOutOfBoundsException e){
             System.out.println("При запуске введите порт");
